@@ -1,0 +1,16 @@
+curl -X POST \
+  http://localhost:8083/connectors \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d '{
+  "name": "FileStreamSinkConnector",
+  "config": {
+    "connector.class": "org.apache.kafka.connect.file.FileStreamSinkConnector",
+    "topics": "test-java-avro-topic",
+    "tasks.max": "1",
+    "file": "/tmp/filesink/test.sink.txt",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081"
+  }
+}'
