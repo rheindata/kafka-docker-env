@@ -3,6 +3,7 @@ services:
   zookeeper-1:
     image: confluentinc/cp-zookeeper:5.1.0
     hostname: zookeeper-1
+    container_name: zookeeper-1
     ports:
       - "2181:2181"
     environment:
@@ -13,6 +14,7 @@ services:
   broker-1:
     image: confluentinc/cp-enterprise-kafka:5.1.0
     hostname: broker-1
+    container_name: broker-1
     depends_on:
       - zookeeper-1
     ports:
@@ -40,6 +42,7 @@ services:
   broker-2:
     image: confluentinc/cp-enterprise-kafka:5.1.0
     hostname: broker-2
+    container_name: broker-2
     depends_on:
       - zookeeper-1
     ports:
@@ -67,6 +70,7 @@ services:
   broker-3:
     image: confluentinc/cp-enterprise-kafka:5.1.0
     hostname: broker-3
+    container_name: broker-3
     depends_on:
       - zookeeper-1
     ports:
@@ -94,14 +98,16 @@ services:
   schema-registry:
     image: confluentinc/cp-schema-registry:5.1.0
     hostname: schema-registry
+    container_name: schema-registry
     depends_on:
       - zookeeper-1
       - broker-1
     ports:
-      - "8081:8081"
+      - "8082:8082"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: 'zookeeper-1:2181'
+      SCHEMA_REGISTRY_LISTENERS: http://localhost:8082
       SCHEMA_REGISTRY_ACCESS_CONTROL_ALLOW_ORIGIN: '*'
       SCHEMA_REGISTRY_ACCESS_CONTROL_ALLOW_METHODS: 'GET,POST,PUT,OPTIONS'
     restart: always
@@ -109,6 +115,7 @@ services:
   connect-1:
     image: confluentinc/cp-kafka-connect:5.1.0
     hostname: connect-1
+    container_name: connect-1
     depends_on:
       - zookeeper-1
       - broker-1
@@ -128,9 +135,9 @@ services:
       CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8082'
       CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8082'
       CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_ZOOKEEPER_CONNECT: 'zookeeper-1:2181'
@@ -138,40 +145,27 @@ services:
       CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
       CLASSPATH: /usr/share/java/monitoring-interceptors/monitoring-interceptors-4.0.0.jar
     volumes:
-      - $PWD/kafka-connect/custom-plugins:/etc/kafka-connect/custom-plugins
-      - $PWD/kafka-connect/filesink:/tmp/filesink
-    restart: always
-      
-  rest-proxy:
-    image: confluentinc/cp-kafka-rest:5.1.0
-    hostname: rest-proxy
-    depends_on:
-      - broker-1
-      - schema-registry
-    ports:
-      - "8086:8086"
-    environment:
-      KAFKA_REST_ZOOKEEPER_CONNECT: '${DOCKER_HOST_IP}:2181'
-      KAFKA_REST_LISTENERS: 'http://0.0.0.0:8086'
-      KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
-      KAFKA_REST_HOST_NAME: 'rest-proxy'
+      - ./kafka-connect/custom-plugins:/etc/kafka-connect/custom-plugins
+      - ./kafka-connect/filesink:/tmp/filesink
     restart: always
       
   schema-registry-ui:
     image: landoop/schema-registry-ui
     hostname: schema-registry-ui
+    container_name: schema-registry-ui
     depends_on:
       - broker-1
       - schema-registry
     ports:
       - "8002:8000"
     environment:
-      SCHEMAREGISTRY_URL: 'http://${PUBLIC_IP}:8081'
+      SCHEMAREGISTRY_URL: 'http://${PUBLIC_IP}:8082'
     restart: always
 
   kafka-connect-ui:
     image: landoop/kafka-connect-ui:0.9.5
     hostname: kafka-connect-ui
+    container_name: kafka-connect-ui
     ports:
       - "8003:8000"
     environment:
@@ -179,25 +173,6 @@ services:
       PROXY: "true"
     depends_on:
       - connect-1
-    restart: always
-
-  web:
-    image: elkozmon/zoonavigator-web:0.5.1
-    container_name: zoonavigator-web
-    ports:
-     - "8010:8010"
-    environment:
-      WEB_HTTP_PORT: 8010
-      API_HOST: "api"
-      API_PORT: 9010
-    depends_on:
-     - api
-    restart: always
-  api:
-    image: elkozmon/zoonavigator-api:0.5.1
-    container_name: zoonavigator-api
-    environment:
-      API_HTTP_PORT: 9010
     restart: always
 
   kafkacat:
@@ -210,5 +185,24 @@ services:
      - broker-3
     restart: always
 
+  kafka_exporter:
+    image: danielqsj/kafka-exporter
+    container_name: kafka-exporter
+    command: --kafka.server=broker-1:9092 --kafka.server=broker-2:9093 --kafka.server=broker-3:9094
+    ports:
+     - "9308:9308"
+    depends_on:
+     - broker-1
+     - broker-2
+     - broker-3
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    command: --config.file=/tmp/config/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention=168h
+    volumes:
+      - ./prometheus/config:/tmp/config
 
 
